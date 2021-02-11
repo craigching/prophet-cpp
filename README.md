@@ -10,7 +10,10 @@ git clone --recursive https://github.com/craigching/prophet-cpp.git
 Build `cmdstan`
 
 ```
-cd cmdstan
-make stan-update
-make build
+$ cd cmdstan
+$ make stan-update
+$ make build
+$ mkdir build && cd build
+$ cmake ..
+$ cmake --build .
 ```
