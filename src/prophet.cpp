@@ -31,7 +31,7 @@ std::pair<std::vector<T>, std::vector<size_t> > load(std::string fname) {
 
     std::cout << "== " << fname << ":" << std::endl;
 
-    std::ifstream infile(fname + ".txt");
+    std::ifstream infile("data/" + fname + ".txt");
     std::string line;
     std::getline(infile, line);
     auto dims = read_dims(line);
