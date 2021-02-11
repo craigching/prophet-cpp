@@ -38,7 +38,7 @@ std::pair<std::vector<T>, std::vector<size_t> > load(std::string fname) {
 
     std::vector<T> values{};
 
-    double val;
+    T val;
     while (infile >> val) {
         std::cout << val << std::endl;
         values.push_back(val);
