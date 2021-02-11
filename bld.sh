@@ -1,0 +1,7 @@
+#!/bin/sh
+
+# clang++ -std=c++1y -Wno-unknown-warning-option -Wno-tautological-compare -Wno-sign-compare -D_REENTRANT -Wno-ignored-attributes      -I stan/lib/stan_math/lib/tbb_2019_U8/include   -O3 -I src -I stan/src -I lib/rapidjson_1.1.0/ -I lib/CLI11-1.9.1/ -I stan/lib/stan_math/ -I stan/lib/stan_math/lib/eigen_3.3.9 -I stan/lib/stan_math/lib/boost_1.72.0 -I stan/lib/stan_math/lib/sundials_5.6.1/include    -DBOOST_DISABLE_ASSERTS         -c -o src/prophet/prophet.o src/prophet/prophet.cpp
+
+clang++ -std=c++17 -Wno-unknown-warning-option -Wno-tautological-compare -Wno-sign-compare -D_REENTRANT -Wno-ignored-attributes      -I cmdstan/stan/lib/stan_math/lib/tbb_2019_U8/include   -O3 -I src -I cmdstan/stan/src -I cmdstan/lib/rapidjson_1.1.0/ -I cmdstan/lib/CLI11-1.9.1/ -I cmdstan/stan/lib/stan_math/ -I cmdstan/stan/lib/stan_math/lib/eigen_3.3.9 -I cmdstan/stan/lib/stan_math/lib/boost_1.72.0 -I cmdstan/stan/lib/stan_math/lib/sundials_5.6.1/include  -I ./include   -DBOOST_DISABLE_ASSERTS  -ltbb        -o prophet src/prophet.cpp
+
+# /usr/local/Cellar/llvm/11.0.0_1/bin/clang++ -std=c++20 -Wno-unknown-warning-option -Wno-tautological-compare -Wno-sign-compare -D_REENTRANT -Wno-ignored-attributes      -I stan/lib/stan_math/lib/tbb_2019_U8/include   -O3 -I src -I stan/src -I lib/rapidjson_1.1.0/ -I lib/CLI11-1.9.1/ -I stan/lib/stan_math/ -I stan/lib/stan_math/lib/eigen_3.3.9 -I stan/lib/stan_math/lib/boost_1.72.0 -I stan/lib/stan_math/lib/sundials_5.6.1/include    -DBOOST_DISABLE_ASSERTS  -ltbb        -o bin/prophet src/prophet/prophet.cpp
