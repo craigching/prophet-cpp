@@ -3,7 +3,7 @@
 #include <vector>
 // #include <numbers>
 #include "prophet_var_context.hpp"
-#include "prophet.hpp"
+#include "prophet_model.hpp"
 #include "table.hpp"
 #include "funcs.hpp"
 #include <stan/services/optimize/lbfgs.hpp>
