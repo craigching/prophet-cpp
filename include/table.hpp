@@ -49,7 +49,7 @@ namespace tbl {
             auto cols = columns.size();
             auto rows = columns[0].size();
 
-            std::cout.precision(5);
+            std::cout.precision(17);
 
             for (auto name: names) {
                 std::cout << name << "  ";
@@ -71,6 +71,10 @@ namespace tbl {
         void set_names(std::vector<std::string> new_names) {
             // TODO number of new_names == number of columns
             names = new_names;
+        }
+
+        auto get_names() const {
+            return names;
         }
     };
 }

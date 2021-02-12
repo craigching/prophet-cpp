@@ -1,3 +1,8 @@
+## Pre-requisites
+
+```
+$ brew install catch2
+```
 
 ## Building
 
