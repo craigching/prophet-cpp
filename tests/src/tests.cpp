@@ -109,7 +109,7 @@ TEST_CASE( "make_seasonality_features is computed correctly", "[make_seasonality
     }
 }
 
-TEST_CASE( "test_predict_trend is computed correctly", "[test_predict_trend]" ) {
+TEST_CASE( "predict_trend is computed correctly", "[test_predict_trend]" ) {
 
     auto expected = read_values_from_file<double>("../tests/src/data/predict_trend_valid.txt");
 
