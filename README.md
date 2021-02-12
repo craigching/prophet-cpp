@@ -18,7 +18,14 @@ Build `cmdstan`
 $ cd cmdstan
 $ make stan-update
 $ make build
+$ cd ..
+```
+
+Build prophet
+
+```
 $ mkdir build && cd build
 $ cmake ..
 $ cmake --build .
+$ cd ..
 ```
