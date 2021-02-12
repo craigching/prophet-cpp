@@ -54,22 +54,20 @@ struct prophet_interrupt : public stan::callbacks::interrupt {
 };
 
 class value : public stan::callbacks::writer {
-private:
-std::vector<double> x_;
+    std::vector<double> x_;
 
 public:
-value() { }
+    value() {}
 
-// deals with name hiding in C++
-using stan::callbacks::writer::operator();
+    using stan::callbacks::writer::operator();
 
-void operator()(const std::vector<double>& x) {
-    x_ = x;
-}
+    void operator()(const std::vector<double>& x) {
+        x_ = x;
+    }
 
-const std::vector<double> x() const {
-    return x_;
-}
+    const std::vector<double> x() const {
+        return x_;
+    }
 };
 
 void make_all_seasonality_features(tbl::table tbl) {
