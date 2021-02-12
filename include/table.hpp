@@ -23,7 +23,7 @@ namespace tbl {
             }
         }
 
-        void push_col(std::string& name, std::vector<double> column) {
+        void push_col(const std::string& name, std::vector<double> column) {
             names.push_back(name); // TODO Check for duplicate names
             columns.push_back(column);
         }
@@ -41,6 +41,16 @@ namespace tbl {
 
         auto get(const size_t row, const size_t col) const {
             return columns[col][row];
+        }
+
+        auto get_col(const std::string& name) const {
+            for (auto i = 0; i < names.size(); ++i) {
+                if (names[i] == name) {
+                    return columns[i];
+                }
+            }
+
+            return std::vector<double>{};
         }
 
         void print() const {
