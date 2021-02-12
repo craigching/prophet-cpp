@@ -137,5 +137,4 @@ std::vector<double> predict_trend(const tbl::table& tbl) {
     return result;
 }
 
-
 #endif // FUNCS_HPP
