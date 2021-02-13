@@ -4,12 +4,19 @@
 #include <vector>
 #include <string>
 #include <iostream>
+#include <chrono>
+#include <iomanip>
+#include <sstream>
+
+#include "csv.h"
 
 namespace tbl {
     class table {
 
     std::vector<std::string> names;
     std::vector<std::vector<double>> columns;
+    std::string times_name;
+    std::vector<std::chrono::system_clock::time_point> times;
 
     public:
         explicit table() {};
@@ -26,6 +33,10 @@ namespace tbl {
         void push_col(const std::string& name, std::vector<double> column) {
             names.push_back(name); // TODO Check for duplicate names
             columns.push_back(column);
+        }
+
+        void push_time(const std::chrono::system_clock::time_point& t) {
+            times.push_back(t);
         }
 
         void push_row(const std::vector<double>& row) {
@@ -51,6 +62,10 @@ namespace tbl {
             }
 
             return std::vector<double>{};
+        }
+
+        auto get_times() const {
+            return times;
         }
 
         void print() const {
@@ -83,8 +98,69 @@ namespace tbl {
             names = new_names;
         }
 
+        void set_times_name(const std::string& name) {
+            times_name = name;
+        }
+
         auto get_names() const {
             return names;
+        }
+
+        auto get_times_name() const {
+            return times_name;
+        }
+
+        static table read_csv(
+            const std::string& fname,
+            const std::vector<std::string>& types,
+            const std::string& date_format = "%Y-%m-%d %HH:%MM%SS",
+            const std::string& delim = ",",
+            const bool header = true
+        ) {
+            tbl::table tbl;
+            std::ifstream file(fname);
+            auto i = 0;
+            for(auto& row: CSVRange(file)) {
+
+                if (i == 0 && header) {
+                    for (auto j = 0; j < row.size(); ++j) {
+                        auto name = std::string(row[j]);
+                        // Strip double quotes
+                        name.erase(remove(name.begin(), name.end(), '"'), name.end());
+                        if (types[j] == "date") {
+                            tbl.set_times_name(name);
+                        } else {
+                            tbl.push_col(name, std::vector<double>{});
+                        }
+                    }
+                    ++i;
+                    continue;
+                }
+
+                std::vector<double> values_row;
+                for (auto j = 0; j < row.size(); ++j) {
+                    auto type = types[j];
+                    auto value = std::string{row[j]};
+                    if (type == "date") {
+                        std::tm t{};
+                        // Strip double quotes
+                        value.erase(remove(value.begin(), value.end(), '"'), value.end());
+                        std::istringstream ss{value};
+                        ss >> std::get_time(&t, date_format.c_str());
+
+                        time_t tt =  mktime(&t);
+
+                        tbl.push_time(std::chrono::system_clock::from_time_t(tt));
+                    } else if (type == "double") {
+                        values_row.push_back(std::stod(value));
+                    }
+                }
+
+                tbl.push_row(values_row);
+                ++i;
+            }
+
+            return tbl;
         }
     };
 }

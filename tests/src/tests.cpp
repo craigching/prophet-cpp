@@ -144,3 +144,37 @@ TEST_CASE( "piecewise_linear is computed correctly", "[piecewise_linear]" ) {
         REQUIRE( logically_equal(result[i], expected[i]) );
     }
 }
+
+TEST_CASE( "table reads csv correctly", "[table::read_csv]" ) {
+
+    auto tbl = tbl::table::read_csv(
+        "../tests/src/data/example_wp_log_peyton_manning.csv",
+        {"date", "double"},
+        "%Y-%m-%d");
+
+    // Check sizes
+    auto [rows, cols] = tbl.shape();
+    REQUIRE( rows == 2905 );
+    REQUIRE( cols == 1 ); // We don't count date columns for now
+    // Check column names
+    REQUIRE( tbl.get_names()[0] == "y" );
+    REQUIRE( tbl.get_times_name() == "ds" );
+    // Spot check some values
+    auto t = tbl.get_times()[0];
+    std::time_t tt = std::chrono::system_clock::to_time_t(t);
+    std::tm tm = *std::localtime(&tt);
+    REQUIRE( tm.tm_year == 107 );
+    REQUIRE( tm.tm_mon == 11 );
+    REQUIRE( tm.tm_mday == 10 );
+
+    t = tbl.get_times()[rows - 1];
+    tt = std::chrono::system_clock::to_time_t(t);
+    tm = *std::localtime(&tt);
+    REQUIRE( tm.tm_year == 116 );
+    REQUIRE( tm.tm_mon == 0 );
+    REQUIRE( tm.tm_mday == 20 );
+
+    auto y = tbl.get_col("y");
+    REQUIRE( logically_equal(y[0], 9.59076113897809) );
+    REQUIRE( logically_equal(y[rows - 1], 8.89137400948464) );
+}
