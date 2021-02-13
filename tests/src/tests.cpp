@@ -147,7 +147,7 @@ TEST_CASE( "piecewise_linear is computed correctly", "[piecewise_linear]" ) {
 
 TEST_CASE( "table reads csv correctly", "[table::read_csv]" ) {
 
-    auto tbl = tbl::table::read_csv(
+    auto tbl = tbl::read_csv(
         "../tests/src/data/example_wp_log_peyton_manning.csv",
         {"date", "double"},
         "%Y-%m-%d");
@@ -177,4 +177,25 @@ TEST_CASE( "table reads csv correctly", "[table::read_csv]" ) {
     auto y = tbl.get_col("y");
     REQUIRE( logically_equal(y[0], 9.59076113897809) );
     REQUIRE( logically_equal(y[rows - 1], 8.89137400948464) );
+}
+
+TEST_CASE( "table functions work correctly", "[table::mean,min,max]" ) {
+
+    tbl::table t1;
+    t1.push_col("countable", {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0});
+
+    auto mean = t1 >> tbl::mean("countable");
+    auto min = t1 >> tbl::min("countable");
+    auto max = t1 >> tbl::max("countable");
+
+    REQUIRE( mean == 5.5 );
+    REQUIRE( min == 1.0 );
+    REQUIRE( max == 10.0 );
+
+#define pred(expr) [](double e) { return expr; }
+
+    auto t2 = t1 >> tbl::filter("countable", pred(e < 6.0));
+
+    REQUIRE( t2.get_col("countable").size() == 5 );
+    REQUIRE( t2.get_col("countable") == std::vector<double>{1, 2, 3, 4, 5} );
 }
