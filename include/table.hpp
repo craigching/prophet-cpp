@@ -18,7 +18,7 @@ namespace tbl {
     std::vector<std::string> names;
     std::vector<std::vector<double>> columns;
     std::string times_name;
-    std::vector<std::chrono::system_clock::time_point> times;
+    std::vector<double> times;
 
     public:
         explicit table() {};
@@ -37,7 +37,7 @@ namespace tbl {
             columns.push_back(column);
         }
 
-        void push_time(const std::chrono::system_clock::time_point& t) {
+        void push_time(double t) {
             times.push_back(t);
         }
 
@@ -161,7 +161,7 @@ namespace tbl {
 
                     time_t tt =  mktime(&t);
 
-                    tbl.push_time(std::chrono::system_clock::from_time_t(tt));
+                    tbl.push_time(tt);
                 } else if (type == "double") {
                     values_row.push_back(std::stod(value));
                 }

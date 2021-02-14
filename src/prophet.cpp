@@ -1,19 +1,12 @@
-#include <iostream>
-#include <fstream>
-#include <vector>
-// #include <numbers>
 #include "prophet.hpp"
 #include "table.hpp"
-#include "funcs.hpp"
-
-void make_all_seasonality_features(tbl::table tbl) {
-
-}
 
 int main(int argc, char* argv[]) {
-
     prophet::prophet prophet;
-    tbl::table tbl;
-    auto fit = prophet.fit(tbl);
+    auto tbl = tbl::read_csv(
+        "../tests/src/data/example_wp_log_peyton_manning.csv",
+        {"date", "double"},
+        "%Y-%m-%d");
 
+    auto fit = prophet.fit(tbl);
 }

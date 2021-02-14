@@ -4,6 +4,7 @@
 #include "table.hpp"
 #include "prophet_model.hpp"
 #include "prophet_var_context.hpp"
+#include "vecops.hpp"
 
 #include <stan/services/optimize/lbfgs.hpp>
 #include <stan/callbacks/interrupt.hpp>
@@ -80,13 +81,74 @@ namespace prophet {
     };
 
     class prophet {
+
+        double start = 0.0;
+        double y_scale = 0.0;
+        bool logistic_floor = false;
+        double t_scale = 0.0;
+
         public:
             explicit prophet() {};
             prophet(prophet const&) = default;
             prophet(prophet&&) = default;
             ~prophet() = default;
 
-            model fit(const tbl::table& tbl) {
+            tbl::table setup_table(tbl::table& tbl, bool scales = false) {
+                // TODO: Checks on time columns and values (e.g. nan, missing, etc)
+                // TODO: extra regressors
+                // TODO: seasonalities
+                // TODO: initialize_scales
+
+                initialize_scales(tbl, scales);
+
+                auto rows = tbl.shape().first;
+                // TODO: logistic floor
+                tbl.push_col("floor", std::vector<double>(rows, 0.0));
+
+                // df['t'] = (df['ds'] - self.start) / self.t_scale
+                auto ds = tbl.get_times();
+                auto t = (ds - start) / t_scale;
+                tbl.push_col("t", t);
+
+                // if 'y' in df:
+                //     df['y_scaled'] = (df['y'] - df['floor']) / self.y_scale
+                auto y = tbl.get_col("y");
+                auto floor = tbl.get_col("floor");
+                auto y_scaled = (y - floor) / y_scale;
+                tbl.push_col("y_scaled", y_scaled);
+
+                // TODO: Handle extra regressors
+
+                return tbl;
+            }
+
+            void initialize_scales(tbl::table& tbl, bool scales) {
+                if (!scales) {
+                    return;
+                }
+
+                // TODO: Handle logistic growth
+                auto floor = 0.0;
+                y_scale = (tbl.get_col("y") - floor) >> vec::abs() >> vec::max();
+                std::cout << "y_scale: " << y_scale << std::endl;
+                if (y_scale == 0) {
+                    y_scale = 1;
+                }
+
+                auto times = tbl.get_times();
+                start = times >> vec::min();
+                t_scale = (times >> vec::max()) - start;
+
+                // TODO: handle extra regressors
+
+            }
+
+            model fit(tbl::table& tbl) {
+                // TODO: Re-enable const on tbl
+                // TODO: See if self.history exists, bail if it does
+                // TODO: See if ds, y exist in tbl, bail if they do not
+                // TODO: Copy tbl to history so we can modify history without worry about tbl
+                setup_table(tbl, true);
                 std::map<std::string,
                     std::pair<std::vector<double>, std::vector<size_t> > > vars_r{};
 
