@@ -3,6 +3,7 @@
 
 #include "funcs.hpp"
 #include "vecops.hpp"
+#include "time_delta.hpp"
 
 #include <string>
 
@@ -270,4 +271,67 @@ TEST_CASE( "vector operator overloads work correctly for time_point", "[vecops]"
     auto max = times >> vec::max();
 
     REQUIRE( min < max );
+}
+
+TEST_CASE( "test diff function", "[diff]" ) {
+    std::vector<double> v {102, 104, 106, 108, 110, 112, 114, 116, 118, 120};
+
+    auto v1 = v >> vec::diff();
+
+    REQUIRE( std::isnan(v1[0]) );
+
+    v1.erase(v1.begin());
+    REQUIRE( v1 == std::vector<double>{2, 2, 2, 2, 2, 2, 2, 2, 2} );
+}
+
+TEST_CASE( "test diff function on table", "[diff on table]"){
+    auto tbl = tbl::read_csv(
+        "../tests/src/data/example_wp_log_peyton_manning.csv",
+        {"date", "double"},
+        "%Y-%m-%d");
+
+    auto first = tbl.get_times() >> vec::min();
+    auto last = tbl.get_times() >> vec::max();
+
+#define pred(expr) [](double e) { return expr; }
+    auto dt = tbl.get_times()
+        >> vec::diff()
+        >> vec::filter(pred( !std::isnan(e) ));
+
+    auto min_dt = dt >> vec::min();
+
+    REQUIRE( first == 1197266400 );
+    REQUIRE( last == 1453269600 );
+    REQUIRE( min_dt == 86400 );
+    REQUIRE( dt.size() == tbl.get_times().size() - 1 );
+}
+
+TEST_CASE( "test time_delta function", "[time_delta]"){
+
+    auto tbl = tbl::read_csv(
+        "../tests/src/data/example_wp_log_peyton_manning.csv",
+        {"date", "double"},
+        "%Y-%m-%d");
+
+    auto first = tbl.get_times() >> vec::min();
+    auto last = tbl.get_times() >> vec::max();
+    auto yearly_disable = last - first < time_delta<days>(730);
+
+#define pred(expr) [](double e) { return expr; }
+    auto min_dt = tbl.get_times()
+        >> vec::diff()
+        >> vec::filter(pred( !std::isnan(e) ))
+        >> vec::min();
+
+    auto weekly_disable = (
+        (last - first < time_delta<weeks>(2)) ||
+        (min_dt >= time_delta<weeks>(1)));
+
+    auto daily_disable = (
+        (last - first < time_delta<days>(2)) ||
+        (min_dt >= time_delta<days>(1)));
+
+    REQUIRE( yearly_disable == false );
+    REQUIRE( weekly_disable == false );
+    REQUIRE( daily_disable == true );
 }

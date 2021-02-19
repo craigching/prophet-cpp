@@ -23,7 +23,7 @@ namespace tbl {
     public:
         explicit table() {};
         table(table const&) = default;
-        table(table&&) = default;
+        // table(table&&) = default;
         ~table() = default;
 
         table(const size_t& cols) {

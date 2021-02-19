@@ -102,6 +102,15 @@ namespace vec {
         };
     }
 
+    std::function<std::vector<double> (const std::vector<double>&)> diff() {
+        return [](const std::vector<double>&v ) {
+            std::vector<double> out;
+            std::adjacent_difference(v.begin(), v.end(), std::back_inserter(out));
+            out[0] = nan("");
+            return out;
+        };
+    }
+
     std::function<TimePoint (std::vector<TimePoint>&)> min_time_point() {
         return [](std::vector<TimePoint>& v) {
             return *std::min_element(v.begin(),v.end());
@@ -111,6 +120,14 @@ namespace vec {
     std::function<TimePoint (std::vector<TimePoint>&)> max_time_point() {
         return [](std::vector<TimePoint>& v) {
             return *std::max_element(v.begin(),v.end());
+        };
+    }
+
+    std::function<std::vector<double> (const std::vector<double>&)> filter(std::function<bool (double)> filter_expr) {
+        return [=](const std::vector<double>& v) {
+            std::vector<double> out;
+            std::copy_if(v.begin(), v.end(), std::back_inserter(out), filter_expr);
+            return out;
         };
     }
 }

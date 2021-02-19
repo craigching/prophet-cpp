@@ -5,11 +5,14 @@
 #include "prophet_model.hpp"
 #include "prophet_var_context.hpp"
 #include "vecops.hpp"
+#include "time_delta.hpp"
 
 #include <stan/services/optimize/lbfgs.hpp>
 #include <stan/callbacks/interrupt.hpp>
 #include <stan/callbacks/stream_logger.hpp>
 #include <stan/callbacks/stream_writer.hpp>
+
+#define pred(expr) [](double e) { return expr; }
 
 std::vector<size_t> read_dims(std::string line) {
 
@@ -80,15 +83,39 @@ namespace prophet {
 
     };
 
+    struct seasonality {
+        double period;
+        int fourier_order;
+        float prior_scale;
+        std::string mode;
+        std::string condition_name;
+    };
+
     class prophet {
 
+
+        tbl::table history;
         double start = 0.0;
         double y_scale = 0.0;
         bool logistic_floor = false;
         double t_scale = 0.0;
+        std::map<std::string, seasonality> seasonalities;
+        double seasonality_prior_scale;
+        std::string seasonality_mode;
+
+        std::string yearly_seasonality;
+        std::string weekly_seasonality;
+        std::string daily_seasonality;
+
 
         public:
-            explicit prophet() {};
+            explicit prophet()
+            : seasonality_prior_scale(10.0),
+              seasonality_mode("additive"),
+              yearly_seasonality("auto"),
+              weekly_seasonality("auto"),
+              daily_seasonality("auto")
+            {};
             prophet(prophet const&) = default;
             prophet(prophet&&) = default;
             ~prophet() = default;
@@ -143,12 +170,96 @@ namespace prophet {
 
             }
 
-            model fit(tbl::table& tbl) {
+            void set_auto_seasonalities() {
+                auto first = history.get_times() >> vec::min();
+                auto last = history.get_times() >> vec::max();
+                auto yearly_disable = last - first < time_delta<days>(730);
+
+                int fourier_order;
+
+                fourier_order = parse_seasonality_args("yearly", yearly_seasonality, yearly_disable, 10);
+                if (fourier_order > 0) {
+                    seasonality s;
+                    s.period = 365.25;
+                    s.fourier_order = fourier_order;
+                    s.prior_scale = seasonality_prior_scale;
+                    s.mode = seasonality_mode;
+                    s.condition_name = "";
+                    seasonalities["yearly"] = s;
+                }
+
+                auto min_dt = history.get_times()
+                    >> vec::diff()
+                    >> vec::filter(pred( !std::isnan(e) ))
+                    >> vec::min();
+
+                auto weekly_disable = (
+                    (last - first < time_delta<weeks>(2)) ||
+                    (min_dt >= time_delta<weeks>(1)));
+                fourier_order = parse_seasonality_args("weekly", weekly_seasonality, weekly_disable, 3);
+                if (fourier_order > 0) {
+                    seasonality s;
+                    s.period = 7;
+                    s.fourier_order = fourier_order;
+                    s.prior_scale = seasonality_prior_scale;
+                    s.mode = seasonality_mode;
+                    s.condition_name = "";
+                    seasonalities["weekly"] = s;
+                }
+
+                auto daily_disable = (
+                    (last - first < time_delta<days>(2)) ||
+                    (min_dt >= time_delta<days>(1)));
+                fourier_order = parse_seasonality_args("daily", daily_seasonality, daily_disable, 4);
+                if (fourier_order > 0) {
+                    seasonality s;
+                    s.period = 1;
+                    s.fourier_order = fourier_order;
+                    s.prior_scale = seasonality_prior_scale;
+                    s.mode = seasonality_mode;
+                    s.condition_name = "";
+                    seasonalities["daily"] = s;
+                }
+            }
+
+            int parse_seasonality_args(const std::string& name, const std::string& arg, bool auto_disable, int default_order) {
+                int fourier_order = std::stoi(arg);
+                if (arg == "auto") {
+                    if (seasonalities.find(name) != seasonalities.end()) {
+                        std::cout << "Found custom seasonality named '"
+                            << name << "', disabling built-in "
+                            << name <<" seasonality." << "\n";
+                    } else if (auto_disable) {
+                        std::cout << "Disabling '"
+                            << name << "' seasonality. Run prophet with "
+                            << name << "_seasonality=True to override this.\n";
+                    } else {
+                        fourier_order = default_order;
+                    }
+                    
+                } else if (arg == "true") {
+                    fourier_order = default_order;
+                } else if (arg == "false") {
+                    fourier_order = 0;
+                }
+
+                return fourier_order;
+            }
+
+            void make_all_seasonality_features(const tbl::table& tbl) {
+
+            }
+
+            model fit(const tbl::table& tbl) {
                 // TODO: Re-enable const on tbl
                 // TODO: See if self.history exists, bail if it does
                 // TODO: See if ds, y exist in tbl, bail if they do not
                 // TODO: Copy tbl to history so we can modify history without worry about tbl
-                setup_table(tbl, true);
+                history = tbl;
+                history = setup_table(history, true);
+                set_auto_seasonalities();
+                make_all_seasonality_features(history);
+
                 std::map<std::string,
                     std::pair<std::vector<double>, std::vector<size_t> > > vars_r{};
 
