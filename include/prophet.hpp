@@ -211,7 +211,6 @@ namespace prophet {
                 auto daily_disable = (
                     (last - first < time_delta<days>(2)) ||
                     (min_dt >= time_delta<days>(1)));
-                std::cout << "daily_disble is: " << (daily_disable ? "true" : "false") << std::endl;
                 fourier_order = parse_seasonality_args("daily", daily_seasonality, daily_disable, 4);
                 if (fourier_order > 0) {
                     seasonality s;
