@@ -78,16 +78,15 @@ TEST_CASE( "make_seasonality_features is computed correctly", "[make_seasonality
     }
     expected_tbl.set_names(names);
 
+    auto tbl1 = tbl::read_csv(
+    "../tests/src/data/example_wp_log_peyton_manning.csv",
+    {"date", "double"},
+    "%Y-%m-%d");
 
-    std::vector<std::string> dates;
-    std::ifstream dates_file("../tests/src/data/dates.txt");
-    while (std::getline(dates_file, line)) {
-        dates.push_back(line);
-    }
     double period = 365.25;
     int series_order = 10;
 
-    auto tbl = make_seasonality_features(dates, period, series_order, "yearly");
+    auto tbl = make_seasonality_features(tbl1.get_times(), period, series_order, "yearly");
 
     REQUIRE( expected_tbl.get_names().size() == tbl.get_names().size() );
     for (auto i = 0; i < tbl.get_names().size(); ++i) {
@@ -105,6 +104,7 @@ TEST_CASE( "make_seasonality_features is computed correctly", "[make_seasonality
                 (i != 1191 && j != 10) &&
                 (i != 1673 && j != 16) &&
                 (i != 2159 && j != 2)) {
+                // std::cout << "expected: " << expected_tbl.get(i, j) << ", actual: " << tbl.get(i, j);
                 REQUIRE( logically_equal(tbl.get(i, j), expected_tbl.get(i, j), 30.0) );
             }
         }

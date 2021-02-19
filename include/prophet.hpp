@@ -6,6 +6,7 @@
 #include "prophet_var_context.hpp"
 #include "vecops.hpp"
 #include "time_delta.hpp"
+#include "funcs.hpp"
 
 #include <stan/services/optimize/lbfgs.hpp>
 #include <stan/callbacks/interrupt.hpp>
@@ -210,6 +211,7 @@ namespace prophet {
                 auto daily_disable = (
                     (last - first < time_delta<days>(2)) ||
                     (min_dt >= time_delta<days>(1)));
+                std::cout << "daily_disble is: " << (daily_disable ? "true" : "false") << std::endl;
                 fourier_order = parse_seasonality_args("daily", daily_seasonality, daily_disable, 4);
                 if (fourier_order > 0) {
                     seasonality s;
@@ -223,7 +225,7 @@ namespace prophet {
             }
 
             int parse_seasonality_args(const std::string& name, const std::string& arg, bool auto_disable, int default_order) {
-                int fourier_order = std::stoi(arg);
+                int fourier_order = 0;
                 if (arg == "auto") {
                     if (seasonalities.find(name) != seasonalities.end()) {
                         std::cout << "Found custom seasonality named '"
@@ -241,12 +243,22 @@ namespace prophet {
                     fourier_order = default_order;
                 } else if (arg == "false") {
                     fourier_order = 0;
+                } else {
+                    fourier_order = std::stoi(arg);
                 }
 
                 return fourier_order;
             }
 
             void make_all_seasonality_features(const tbl::table& tbl) {
+
+                for (auto [name, props]: seasonalities) {
+                    auto features = make_seasonality_features(
+                        tbl.get_times(),
+                        props.period,
+                        props.fourier_order,
+                        name);
+                }
 
             }
 
