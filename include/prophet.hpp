@@ -87,13 +87,12 @@ namespace prophet {
     struct seasonality {
         double period;
         int fourier_order;
-        float prior_scale;
+        double prior_scale;
         std::string mode;
         std::string condition_name;
     };
 
     class prophet {
-
 
         tbl::table history;
         double start = 0.0;
@@ -251,13 +250,68 @@ namespace prophet {
 
             void make_all_seasonality_features(const tbl::table& tbl) {
 
+                std::vector<tbl::table> seasonal_features_vec;
+                std::vector<double> prior_scales;
+                std::map<std::string, std::vector<std::string>> modes = {
+                    {"additive", std::vector<std::string>{}},
+                    {"multiplicative", std::vector<std::string>{}}
+                };
+
                 for (auto [name, props]: seasonalities) {
                     auto features = make_seasonality_features(
                         tbl.get_times(),
                         props.period,
                         props.fourier_order,
                         name);
+                    if (props.condition_name != "") {
+                        // TODO
+                        std::cerr << "make_all_seasonality_features: condition_name is not implemented" << std::endl;
+                        std::abort();
+                    }
+                    seasonal_features_vec.push_back(features);
+                    // prior_scales.extend(
+                    //     [props['prior_scale']] * features.shape[1])
+                    for (auto i = 0; i < features.shape().second; ++i) {
+                        prior_scales.push_back(props.prior_scale);
+                    }
+                    // modes[props['mode']].append(name)
+                    modes[props.mode].push_back(name);
                 }
+
+                std::cout << "==> prior_scales:\n";
+                for (auto& v: prior_scales) {
+                    std::cout << v << std::endl;
+                }
+                std::cout << "<== prior_scales" << std::endl;
+
+                std::cout << "==> modes\n";
+                for (auto& [mode, vec]: modes) {
+                    std::cout << "\t" << mode << "\n";
+                    for (auto& v: vec) {
+                        std::cout << "\t\t" << v << "\n";
+                    }
+                }
+                std::cout << "<== modes" << std::endl;
+
+                // TODO Holiday features
+                // TODO Addtional regressors
+                // TODO Dummy to prevent empty X
+
+                // seasonal_features = pd.concat(seasonal_features, axis=1)
+                tbl::table seasonal_features;
+                for (auto& t: seasonal_features_vec) {
+                    seasonal_features += t;
+                }
+                std::cout << "==> make_all_seasonality_features, seasonal_features.columns" << std::endl;
+                for (auto& name: seasonal_features.get_names()) {
+                    std::cout << name << std::endl;
+                }
+                std::cout << "<== make_all_seasonality_features, seasonal_features.columns" << std::endl;
+                // component_cols, modes = self.regressor_column_matrix(
+                //     seasonal_features, modes
+                // )
+                // return seasonal_features, prior_scales, component_cols, modes
+
 
             }
 

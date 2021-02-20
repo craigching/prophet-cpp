@@ -112,6 +112,12 @@ namespace tbl {
             return times_name;
         }
 
+        void operator+=(const tbl::table& tbl) {
+            for (auto& name : tbl.get_names()) {
+                push_col(name, tbl.get_col(name));
+            }
+        }
+
         auto operator>>(std::function<double (table&)> f) {
             return f(*this);
         }
