@@ -130,6 +130,14 @@ namespace vec {
             return out;
         };
     }
+
+    std::vector<int> range(size_t n) {
+        std::vector<int> result;
+        for (auto i = 0; i < n; ++i) {
+            result.push_back(i);
+        }
+        return result;
+    }
 }
 
 #endif // VECOPS_HPP

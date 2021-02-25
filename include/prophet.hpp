@@ -13,6 +13,11 @@
 #include <stan/callbacks/stream_logger.hpp>
 #include <stan/callbacks/stream_writer.hpp>
 
+#include <boost/multi_index_container.hpp>
+#include <boost/multi_index/random_access_index.hpp>
+#include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/member.hpp>
+
 #define pred(expr) [](double e) { return expr; }
 
 std::vector<size_t> read_dims(std::string line) {
@@ -85,12 +90,21 @@ namespace prophet {
     };
 
     struct seasonality {
+        std::string name;
         double period;
         int fourier_order;
         double prior_scale;
         std::string mode;
         std::string condition_name;
     };
+
+    typedef boost::multi_index::multi_index_container<
+        seasonality,
+        boost::multi_index::indexed_by<
+            boost::multi_index::random_access<>,
+            boost::multi_index::hashed_unique<boost::multi_index::member<seasonality, std::string, &seasonality::name>>
+        >
+    > seasonalities_container;
 
     class prophet {
 
@@ -99,13 +113,16 @@ namespace prophet {
         double y_scale = 0.0;
         bool logistic_floor = false;
         double t_scale = 0.0;
-        std::map<std::string, seasonality> seasonalities;
+        seasonalities_container seasonalities;
+        // std::map<std::string, seasonality> seasonalities;
         double seasonality_prior_scale;
         std::string seasonality_mode;
 
         std::string yearly_seasonality;
         std::string weekly_seasonality;
         std::string daily_seasonality;
+
+        std::string train_holiday_names;
 
 
         public:
@@ -114,7 +131,8 @@ namespace prophet {
               seasonality_mode("additive"),
               yearly_seasonality("auto"),
               weekly_seasonality("auto"),
-              daily_seasonality("auto")
+              daily_seasonality("auto"),
+              train_holiday_names("")
             {};
             prophet(prophet const&) = default;
             prophet(prophet&&) = default;
@@ -180,12 +198,13 @@ namespace prophet {
                 fourier_order = parse_seasonality_args("yearly", yearly_seasonality, yearly_disable, 10);
                 if (fourier_order > 0) {
                     seasonality s;
+                    s.name = "yearly";
                     s.period = 365.25;
                     s.fourier_order = fourier_order;
                     s.prior_scale = seasonality_prior_scale;
                     s.mode = seasonality_mode;
                     s.condition_name = "";
-                    seasonalities["yearly"] = s;
+                    seasonalities.push_back(s);
                 }
 
                 auto min_dt = history.get_times()
@@ -199,12 +218,13 @@ namespace prophet {
                 fourier_order = parse_seasonality_args("weekly", weekly_seasonality, weekly_disable, 3);
                 if (fourier_order > 0) {
                     seasonality s;
+                    s.name = "weekly";
                     s.period = 7;
                     s.fourier_order = fourier_order;
                     s.prior_scale = seasonality_prior_scale;
                     s.mode = seasonality_mode;
                     s.condition_name = "";
-                    seasonalities["weekly"] = s;
+                    seasonalities.push_back(s);
                 }
 
                 auto daily_disable = (
@@ -213,19 +233,22 @@ namespace prophet {
                 fourier_order = parse_seasonality_args("daily", daily_seasonality, daily_disable, 4);
                 if (fourier_order > 0) {
                     seasonality s;
+                    s.name = "daily";
                     s.period = 1;
                     s.fourier_order = fourier_order;
                     s.prior_scale = seasonality_prior_scale;
                     s.mode = seasonality_mode;
                     s.condition_name = "";
-                    seasonalities["daily"] = s;
+                    seasonalities.push_back(s);
                 }
             }
 
             int parse_seasonality_args(const std::string& name, const std::string& arg, bool auto_disable, int default_order) {
                 int fourier_order = 0;
+                auto &hash_index = seasonalities.get<1>();
+
                 if (arg == "auto") {
-                    if (seasonalities.find(name) != seasonalities.end()) {
+                    if (hash_index.find(name) != hash_index.end()) {
                         std::cout << "Found custom seasonality named '"
                             << name << "', disabling built-in "
                             << name <<" seasonality." << "\n";
@@ -248,7 +271,7 @@ namespace prophet {
                 return fourier_order;
             }
 
-            void make_all_seasonality_features(const tbl::table& tbl) {
+            auto make_all_seasonality_features(const tbl::table& tbl) {
 
                 std::vector<tbl::table> seasonal_features_vec;
                 std::vector<double> prior_scales;
@@ -257,12 +280,12 @@ namespace prophet {
                     {"multiplicative", std::vector<std::string>{}}
                 };
 
-                for (auto [name, props]: seasonalities) {
+                for (auto& props: seasonalities) {
                     auto features = make_seasonality_features(
                         tbl.get_times(),
                         props.period,
                         props.fourier_order,
-                        name);
+                        props.name);
                     if (props.condition_name != "") {
                         // TODO
                         std::cerr << "make_all_seasonality_features: condition_name is not implemented" << std::endl;
@@ -275,7 +298,7 @@ namespace prophet {
                         prior_scales.push_back(props.prior_scale);
                     }
                     // modes[props['mode']].append(name)
-                    modes[props.mode].push_back(name);
+                    modes[props.mode].push_back(props.name);
                 }
 
                 std::cout << "==> prior_scales:\n";
@@ -310,9 +333,142 @@ namespace prophet {
                 // component_cols, modes = self.regressor_column_matrix(
                 //     seasonal_features, modes
                 // )
+                auto [component_cols, enhanced_modes] = regressor_column_matrix(seasonal_features, modes);
                 // return seasonal_features, prior_scales, component_cols, modes
 
+                return std::tuple(seasonal_features, prior_scales, component_cols, enhanced_modes);
+            }
 
+            std::pair<tbl::table, std::map<std::string, std::vector<std::string>>> regressor_column_matrix(const tbl::table& seasonal_features, std::map<std::string, std::vector<std::string>> modes) {
+
+                std::vector<std::pair<int, std::string>> components;
+
+                int i = 0;
+                for (auto& name: seasonal_features.get_names()) {
+                    components.push_back(std::make_pair(i++, first(name, "_delim_")));
+                }
+
+                if (train_holiday_names != "") {
+                    // TODO
+                    std::cerr << "Holiday names are not yet supported" << std::endl;
+                    std::abort();
+                }
+
+                std::vector<std::string> modes_{"additive", "multiplicative"};
+                for (auto& mode: modes_) {
+                    // components = self.add_group_component(
+                    //     components, mode + '_terms', modes[mode]
+                    // )
+
+                    std::vector<std::string> groups = modes[mode];
+                    components = add_group_component(components, mode + "_terms", groups);
+
+                    // # Add combination components to modes
+                    // modes[mode].append(mode + '_terms')
+                    // modes[mode].append('extra_regressors_' + mode)
+                    auto& m = modes[mode];
+                    m.push_back(mode + "_terms");
+                    m.push_back("extra_regressors_" + mode);
+                }
+
+                // modes[self.seasonality_mode].append('holidays')
+                auto& _m = modes[seasonality_mode];
+                _m.push_back("holidays");
+
+                for (auto& [col, component]: components) {
+                    std::cout << "col: " << col << ", component: " << component << "\n";
+                }
+
+                // Create cross tab cols to component
+                auto max = std::max_element(begin(components), end(components),
+                    [](const std::pair<int, std::string>& left, const std::pair<int, std::string>& right){
+                    return left.first <  right.first;
+                }) -> first;
+                std::cout << "max col: " << max << std::endl;
+
+                // Get the unique components
+                std::vector<std::string> individual_components;
+                for (auto& [col, component]: components) {
+                    individual_components.push_back(component);
+                }
+
+                std::sort(individual_components.begin(), individual_components.end());
+                std::vector<std::string>::iterator it;
+                it = std::unique(individual_components.begin(), individual_components.end());
+                individual_components.resize(std::distance(individual_components.begin(),it));
+
+                std::cout << "individual_components\n";
+                for (auto& component: individual_components) {
+                    std::cout << component << "\n";
+                }
+                std::cout << "individual_components done" << std::endl;
+
+                std::map<std::string, std::vector<double>> m;
+                for (auto& name: individual_components) {
+                    m[name] = std::vector<double>(max + 1, 0.0);
+                }
+
+                for (auto& [col, component]: components) {
+                    auto ccol = m[component];
+                    ccol[col] = 1;
+                    m[component] = ccol;
+                }
+
+                tbl::table component_cols;
+                for (auto& [name, vec]: m) {
+                    component_cols.push_col(name, vec);
+                }
+
+                // end crosstab
+
+                for (auto& mode: modes_) {
+                    if (!component_cols.exists(mode + "_terms")) {
+                        component_cols.push_col(mode + "_terms", std::vector<double>(max + 1, 0.0));
+                    }
+                }
+
+                std::cout << "component_cols\n";
+                component_cols.print();
+                std::cout << "component_cols done.\n";
+                std::cout << "modes\n";
+                for (auto& [m, ms]: modes) {
+                    std::cout << "\t" << m << "\n";
+                    for (auto& blah: ms) {
+                        std::cout << "\t\t" << blah << "\n";
+                    }
+                }
+                std::cout << "modes done.\n";
+
+                return std::make_pair(component_cols, modes);
+            }
+
+            std::vector<std::pair<int, std::string>> add_group_component(
+                std::vector<std::pair<int, std::string>> components,
+                std::string name,
+                std::vector<std::string> group) {
+
+                for (auto& elem: group) {
+                    std::cout << elem << "\n";
+                }
+
+                std::vector<int> group_cols;
+                for (auto& [col, component]: components) {
+                    if(std::find(group.begin(), group.end(), component) != group.end()) {
+                        group_cols.push_back(col);
+                    }
+                }
+                // Get unique cols
+                std::sort(group_cols.begin(), group_cols.end());
+                std::vector<int>::iterator it;
+                it = std::unique(group_cols.begin(), group_cols.end());
+                group_cols.resize(std::distance(group_cols.begin(), it));
+                if (group_cols.size() > 0) {
+                    for (auto& col: group_cols) {
+                        components.push_back({col, name});
+                    }
+                }
+
+                return components;
             }
 
             model fit(const tbl::table& tbl) {
@@ -323,7 +479,7 @@ namespace prophet {
                 history = tbl;
                 history = setup_table(history, true);
                 set_auto_seasonalities();
-                make_all_seasonality_features(history);
+                auto [seasonal_features, prior_scales, component_cols, modes] = make_all_seasonality_features(history);
 
                 std::map<std::string,
                     std::pair<std::vector<double>, std::vector<size_t> > > vars_r{};

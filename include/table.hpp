@@ -66,6 +66,15 @@ namespace tbl {
             return std::vector<double>{};
         }
 
+        auto exists(const std::string& name) const {
+            for (auto& n: names) {
+                if (name == n) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         auto get_times() const {
             return times;
         }

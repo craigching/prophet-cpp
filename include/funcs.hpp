@@ -7,6 +7,10 @@
 #include <iomanip>
 #include <cmath>
 
+std::string first(const std::string& str, const std::string& delim) {
+    return str.substr(0, str.find(delim));
+}
+
 int to_day(time_t tt) {
     using std::chrono::system_clock;
     using std::chrono::time_point_cast;
