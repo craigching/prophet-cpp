@@ -7,6 +7,13 @@
 #include <iomanip>
 #include <cmath>
 
+inline bool logically_equal(double a, double b, double error_factor=1.0)
+{
+  return a==b ||
+    std::abs(a-b)<std::abs(std::min(a,b))*std::numeric_limits<double>::epsilon()*
+                  error_factor;
+}
+
 std::string first(const std::string& str, const std::string& delim) {
     return str.substr(0, str.find(delim));
 }
@@ -30,6 +37,34 @@ int date_to_day(const std::string& date){
     time_t tt =  mktime(&t);
 
     return to_day(tt);
+}
+
+std::vector<double> linspace(int start_in, int end_in, int num_in) {
+
+    std::vector<double> linspaced;
+
+    double start = static_cast<double>(start_in);
+    double end = static_cast<double>(end_in);
+    double num = static_cast<double>(num_in);
+
+    if (num == 0) {
+        return linspaced;
+    }
+
+    if (num == 1) {
+        linspaced.push_back(start);
+        return linspaced;
+    }
+
+    double delta = (end - start) / (num - 1);
+
+    for(int i=0; i < num-1; ++i) {
+        linspaced.push_back(start + delta * i);
+    }
+
+    linspaced.push_back(end);
+
+    return linspaced;
 }
 
 tbl::table fourier_series(std::vector<double> dates, double period, int series_order) {

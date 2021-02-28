@@ -41,7 +41,7 @@ std::pair<std::vector<T>, std::vector<size_t> > load(std::string fname) {
 
     std::cout << "== " << fname << ":" << std::endl;
 
-    std::ifstream infile("data/" + fname + ".txt");
+    std::ifstream infile("../data/" + fname + ".txt");
     std::string line;
     std::getline(infile, line);
     auto dims = read_dims(line);
@@ -109,6 +109,7 @@ namespace prophet {
     class prophet {
 
         tbl::table history;
+        std::string growth{"linear"};
         double start = 0.0;
         double y_scale = 0.0;
         bool logistic_floor = false;
@@ -124,6 +125,11 @@ namespace prophet {
 
         std::string train_holiday_names;
 
+        double changepoint_prior_scale = 0.05;
+        std::vector<double> changepoints;
+        std::vector<double> changepoints_t;
+        double changepoint_range;
+        int n_changepoints;
 
         public:
             explicit prophet()
@@ -132,7 +138,9 @@ namespace prophet {
               yearly_seasonality("auto"),
               weekly_seasonality("auto"),
               daily_seasonality("auto"),
-              train_holiday_names("")
+              train_holiday_names(""),
+              changepoint_range(0.8),
+              n_changepoints(25)
             {};
             prophet(prophet const&) = default;
             prophet(prophet&&) = default;
@@ -471,6 +479,57 @@ namespace prophet {
                 return components;
             }
 
+            void set_changepoints() {
+
+                if (false) {
+                    // TODO Handle self.changepoints is not None
+                } else {
+                    int hist_size = int(floor(history.shape().first * changepoint_range));
+
+                    if (n_changepoints + 1 > hist_size) {
+                        std::cerr << "Not implemented yet" << std::endl;
+                        std::abort();
+                    }
+
+                    std::cout << "hist_size: " << hist_size << ", n_changepoints: " << n_changepoints << "\n";
+
+                    if (n_changepoints > 0) {
+                        auto cp_indexes = linspace(0, hist_size - 1, n_changepoints + 1)
+                            >> vec::round()
+                            >> vec::to_int();
+                        std::cout << "cp_indexes:\n";
+                        for (auto& cp: cp_indexes) {
+                            std::cout << cp << std::endl;
+                        }
+
+                        for (auto& index: cp_indexes) {
+                            changepoints.push_back(history.get_times()[index]);
+                        }
+                        changepoints.erase(changepoints.begin());
+                    }
+                }
+
+                if (changepoints.size() > 0) {
+                    changepoints_t = (changepoints - start) / t_scale;
+                    std::sort(changepoints_t.begin(), changepoints_t.end());
+                    std::cout << "changepoints_t:\n";
+                    for (auto& v: changepoints_t) {
+                        std::cout << v << "\n";
+                    }
+                    std::cout << "changepoints_t done." << std::endl;
+                }
+            }
+
+            auto linear_growth_init(const tbl::table& t) {
+                size_t i0 = 0;
+                size_t i1 = t.get_times().size() - 1;
+                auto T = t.get_col("t")[i1] - t.get_col("t")[i0];
+                auto k = (t.get_col("y_scaled")[i1] - t.get_col("y_scaled")[i0]) / T;
+                auto m = t.get_col("y_scaled")[i0] - k * t.get_col("t")[i0];
+
+                return std::pair(k, m);
+            }
+
             model fit(const tbl::table& tbl) {
                 // TODO: Re-enable const on tbl
                 // TODO: See if self.history exists, bail if it does
@@ -481,51 +540,63 @@ namespace prophet {
                 set_auto_seasonalities();
                 auto [seasonal_features, prior_scales, component_cols, modes] = make_all_seasonality_features(history);
 
+                set_changepoints();
+
+                std::map<std::string, int> trend_indicator{{"linear", 0}, {"logistic", 1}, {"flat", 2}};
+
                 std::map<std::string,
                     std::pair<std::vector<double>, std::vector<size_t> > > vars_r{};
+
+                auto [history_rows, history_cols] = history.shape();
+
+                std::cout << "vars_r" << std::endl;
+                std::vector<double> X;
+                for (auto& name: seasonal_features.get_names()) {
+                    auto const &col = seasonal_features.get_col(name);
+                    for (auto& v: col) {
+                        X.push_back(v);
+                    }
+                }
+                auto [seasonal_rows, seasonal_cols] = seasonal_features.shape();
+                vars_r["X"] = std::pair(X, std::vector<size_t>{seasonal_rows, seasonal_cols});
+                vars_r["sigmas"] = std::pair(prior_scales, std::vector<size_t>{prior_scales.size()});
+                auto t = history.get_col("t");
+                vars_r["t"] = std::pair(t, std::vector<size_t>{t.size()});
+                vars_r["t_change"] = std::pair(changepoints_t, std::vector<size_t>{changepoints_t.size()});
+                vars_r["tau"] = std::pair(std::vector<double>{changepoint_prior_scale}, std::vector<size_t>{0});
+                auto y = history.get_col("y_scaled");
+                vars_r["y"] = std::pair(y, std::vector<size_t>{y.size()});
+
+                double k, m;
+                if (growth == "linear") {
+                    std::cout << "history_rows: " << history_rows << std::endl;
+                    auto cap = std::vector<double>(history_rows, 0);
+                    vars_r["cap"] = std::pair(cap, std::vector<size_t>{cap.size()});
+                    std::cout << "cap size: " << cap.size() << std::endl;
+                    auto [ ktmp, mtmp ] = linear_growth_init(history);
+                    k = ktmp;
+                    m = mtmp;
+                } else if (growth == "flat") {
+
+                } else {
+
+                }
+
+                std::cout << "k: " << k << ", m: " << m << std::endl;
 
                 std::map<std::string,
                     std::pair<std::vector<int>, std::vector<size_t> > > vars_i{};
 
-                // X:
-                // cap:
-                // sigmas:
-                // t:
-                // t_change:
-                // tau:
-                // y:
-                std::map<std::string, std::string> m1{
-                    {"X", "X"},
-                    {"cap", "cap"},
-                    {"sigmas", "sigmas"},
-                    {"t", "t"},
-                    {"t_change", "t_change"},
-                    {"tau", "tau"},
-                    {"y", "y"}
-                };
-
-                for (auto const& [key, val] : m1) {
-                    vars_r[key] = load<double>(val);
-                }
-
-                // K
-                // S
-                // T
-                // s_a
-                // s_m
-                // trend_indicator
-                std::map<std::string, std::string> m2{
-                    {"K", "K"},
-                    {"S", "S"},
-                    {"T", "T1"},
-                    {"s_a", "s_a"},
-                    {"s_m", "s_m"},
-                    {"trend_indicator", "trend_indicator"}
-                };
-
-                for (auto const& [key, val] : m2) {
-                    vars_i[key] = load<int>(val);
-                }
+                auto [tmp1, K] = seasonal_features.shape();
+                vars_i["K"] = std::pair(std::vector<int>{static_cast<int>(K)}, std::vector<size_t>{0});
+                auto len = changepoints_t.size();
+                vars_i["S"] = std::pair(std::vector<int>{static_cast<int>(len)}, std::vector<size_t>{0});
+                vars_i["T"] = std::pair(std::vector<int>{static_cast<int>(history_rows)}, std::vector<size_t>{0});
+                auto s_a = component_cols.get_col("additive_terms") >> vec::to_int();
+                vars_i["s_a"] = std::pair(s_a, std::vector<size_t>{s_a.size()});
+                auto s_m = component_cols.get_col("multiplicative_terms") >> vec::to_int();
+                vars_i["s_m"] = std::pair(s_m, std::vector<size_t>{s_m.size()});
+                vars_i["trend_indicator"] = std::pair(std::vector<int>{trend_indicator[growth]}, std::vector<size_t>{0});
 
                 stan::io::prophet_var_context context(vars_r, vars_i);
 
@@ -536,27 +607,17 @@ namespace prophet {
                 std::map<std::string,
                     std::pair<std::vector<double>, std::vector<size_t> > > vars_r_optimize{};
 
+                std::vector<double> beta(K, 0);
+                vars_r_optimize["beta"] = std::pair(beta, std::vector<size_t>{beta.size()});
+                std::vector<double> delta(changepoints_t.size(), 0);
+                vars_r_optimize["delta"] = std::pair(delta, std::vector<size_t>{delta.size()});
+                vars_r_optimize["k"] = std::pair(std::vector<double>{k}, std::vector<size_t>{0});
+                vars_r_optimize["m"] = std::pair(std::vector<double>{m}, std::vector<size_t>{0});
+
                 std::map<std::string,
                     std::pair<std::vector<int>, std::vector<size_t> > > vars_i_optimize{};
 
-                std::map<std::string, std::string> m3{
-                    {"beta", "beta"},
-                    {"delta", "delta"},
-                    {"k", "k1"},
-                    {"m", "m"}
-                };
-
-                for (auto const& [key, val] : m3) {
-                    vars_r_optimize[key] = load<double>(val);
-                }
-
-                std::map<std::string, std::string> m4{
-                    {"sigma_obs", "sigma_obs"}
-                };
-
-                for (auto const& [key, val] : m4) {
-                    vars_i_optimize[key] = load<int>(val);
-                }
+                vars_i_optimize["sigma_obs"] = std::pair(std::vector<int>{1}, std::vector<size_t>{0});
 
                 stan::io::prophet_var_context init_context(vars_r_optimize, vars_i_optimize);
 
@@ -581,6 +642,8 @@ namespace prophet {
                 // stan::callbacks::writer sample_writer;
                 value sample_writer;
 
+                std::cout << "OPTIMIZING" << std::endl;
+
                 stan::services::optimize::lbfgs(prophet_model,
                                                 init_context,
                                                 random_seed, id, init_radius,
@@ -597,11 +660,13 @@ namespace prophet {
                                                 interrupt, logger,
                                                 init_writer, sample_writer);
 
-                double k;
-                double m;
-                std::vector<double> delta;
+                // double k;
+                // double m;
+                // std::vector<double> delta;
+                delta.clear();
                 double sigma_obs;
-                std::vector<double> beta;
+                // std::vector<double> beta;
+                beta.clear();
                 std::vector<double> trend;
 
                 std::vector<std::string> param_names;

@@ -76,6 +76,10 @@ auto operator>>(const std::vector<double>& v, std::function<std::vector<double> 
     return f(v);
 }
 
+auto operator>>(const std::vector<double>& v, std::function<std::vector<int> (const std::vector<double>&)> f) {
+    return f(v);
+}
+
 using TimePoint = std::chrono::system_clock::time_point;
 auto operator>>(std::vector<TimePoint>& v, std::function<TimePoint (std::vector<TimePoint>&)> f) {
     return f(v);
@@ -98,6 +102,22 @@ namespace vec {
         return [](const std::vector<double>&v ) {
             std::vector<double> out;
             std::transform(v.begin(), v.end(), std::back_inserter(out), [](double v) { return std::abs(v); });
+            return out;
+        };
+    }
+
+    std::function<std::vector<double> (const std::vector<double>&)> round() {
+        return [](const std::vector<double>&v ) {
+            std::vector<double> out;
+            std::transform(v.begin(), v.end(), std::back_inserter(out), [](double v) { return std::round(v); });
+            return out;
+        };
+    }
+
+    std::function<std::vector<int> (const std::vector<double>&)> to_int() {
+        return [](const std::vector<double>&v ) {
+            std::vector<int> out;
+            std::transform(v.begin(), v.end(), std::back_inserter(out), [](double v) { return static_cast<int>(v); });
             return out;
         };
     }

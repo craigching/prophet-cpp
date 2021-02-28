@@ -57,13 +57,6 @@ auto read_values_from_file(const std::string& fname) {
     return values;
 }
 
-inline bool logically_equal(double a, double b, double error_factor=1.0)
-{
-  return a==b ||
-    std::abs(a-b)<std::abs(std::min(a,b))*std::numeric_limits<double>::epsilon()*
-                  error_factor;
-}
-
 TEST_CASE( "make_seasonality_features is computed correctly", "[make_seasonality_features]" ) {
 
     std::string line;
