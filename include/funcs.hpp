@@ -18,6 +18,16 @@ std::string first(const std::string& str, const std::string& delim) {
     return str.substr(0, str.find(delim));
 }
 
+std::vector<double> date_range(double start, int periods, const std::string& freq) {
+    std::vector<double> range;
+    if (freq == "D") {
+        for (auto i = 0; i < periods; ++i) {
+            range.push_back(start + (i * 24 * 60 * 60));
+        }
+    }
+    return range;
+}
+
 int to_day(time_t tt) {
     using std::chrono::system_clock;
     using std::chrono::time_point_cast;

@@ -80,15 +80,6 @@ public:
 };
 
 namespace prophet {
-    class model {
-        public:
-            explicit model() {};
-            model(model const&) = default;
-            model(model&&) = default;
-            ~model() = default;
-
-    };
-
     struct seasonality {
         std::string name;
         double period;
@@ -109,6 +100,7 @@ namespace prophet {
     class prophet {
 
         tbl::table history;
+        std::vector<double> history_dates;
         std::string growth{"linear"};
         double start = 0.0;
         double y_scale = 0.0;
@@ -530,12 +522,19 @@ namespace prophet {
                 return std::pair(k, m);
             }
 
-            model fit(const tbl::table& tbl) {
+            prophet fit(const tbl::table& tbl) {
                 // TODO: Re-enable const on tbl
                 // TODO: See if self.history exists, bail if it does
                 // TODO: See if ds, y exist in tbl, bail if they do not
                 // TODO: Copy tbl to history so we can modify history without worry about tbl
                 history = tbl;
+
+                history_dates = tbl.get_times();
+                std::sort(history_dates.begin(), history_dates.end());
+                std::vector<double>::iterator it;
+                it = std::unique(history_dates.begin(), history_dates.end());
+                history_dates.resize(std::distance(history_dates.begin(),it));
+
                 history = setup_table(history, true);
                 set_auto_seasonalities();
                 auto [seasonal_features, prior_scales, component_cols, modes] = make_all_seasonality_features(history);
@@ -732,9 +731,37 @@ namespace prophet {
                 for (auto v: trend) {
                     std::cout << "\t" << v << "\n";
                 }
-                return model{};
+                return *this;
             }
 
+            tbl::table make_future_dataframe(int periods, const std::string& freq="D", bool include_history=true) {
+
+                if (!(history_dates.size() > 0)) {
+                    std::cerr << "Model has not been fit." << std::endl;
+                    // TODO: Determine error handling, use exceptions, but need definition
+                    std::abort();
+                }
+
+                auto last_date = history_dates >> vec::max();
+
+                auto dates = date_range(last_date, periods + 1, freq);
+
+                dates = dates >> vec::filter([last_date](double e) { return e > last_date; });
+
+                tbl::table tbl;
+
+                if (include_history) {
+                    for (auto& d: history_dates) {
+                        tbl.push_time(d);
+                    }
+                }
+
+                for (auto& d: dates) {
+                    tbl.push_time(d);
+                }
+
+                return tbl;
+            }
     };
 }
 
