@@ -10,6 +10,8 @@
 #include <sstream>
 #include <fstream>
 
+#include <stan/math/prim/fun/Eigen.hpp>
+
 #include "csv.h"
 
 namespace tbl {
@@ -100,8 +102,11 @@ namespace tbl {
             }
         }
 
-        auto shape() const {
-            return std::make_pair(columns[0].size(), columns.size());
+        std::pair<size_t, size_t> shape() const {
+            if (columns.size() > 0) {
+                return std::make_pair(columns[0].size(), columns.size());
+            }
+            return std::pair(0, 0);
         }
 
         void set_names(std::vector<std::string> new_names) {
@@ -133,6 +138,17 @@ namespace tbl {
 
         auto operator>>(std::function<table (table&)> f) {
             return f(*this);
+        }
+
+        Eigen::MatrixXd to_eigen() {
+            auto [rows, cols] = shape();
+            Eigen::MatrixXd mat(rows, cols);
+            for (auto i = 0; i < rows; ++i) {
+                for (auto j = 0; j < cols; ++j) {
+                    mat(i, j) = get(i, j);
+                }
+            }
+            return mat;
         }
     };
 

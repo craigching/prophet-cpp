@@ -68,6 +68,20 @@ std::vector<T> operator-(const std::vector<T>& v1, const std::vector<T>& v2) {
     return out;
 }
 
+template <typename T>
+std::vector<T> operator*(const std::vector<T>& v1, const std::vector<T>& v2) {
+    std::vector<T> out;
+    std::transform(v1.begin(), v1.end(), v2.begin(), std::back_inserter(out), std::multiplies<T>());
+    return out;
+}
+
+template <typename T>
+std::vector<T> operator+(const std::vector<T>& v1, const std::vector<T>& v2) {
+    std::vector<T> out;
+    std::transform(v1.begin(), v1.end(), v2.begin(), std::back_inserter(out), std::plus<T>());
+    return out;
+}
+
 auto operator>>(const std::vector<double>& v, std::function<double (const std::vector<double>&)> f) {
     return f(v);
 }
@@ -93,6 +107,13 @@ namespace vec {
     }
 
     std::function<double (const std::vector<double>&)> min() {
+        return [](const std::vector<double>& v) {
+            double sum = std::accumulate(v.begin(), v.end(), 0.0);
+            return sum / v.size();
+        };
+    }
+
+    std::function<double (const std::vector<double>&)> mean() {
         return [](const std::vector<double>& v) {
             return *std::min_element(v.begin(),v.end());
         };
