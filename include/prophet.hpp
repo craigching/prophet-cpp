@@ -89,6 +89,13 @@ namespace prophet {
         std::string condition_name;
     };
 
+    struct fit_params {
+        double k;
+        double m;
+        std::vector<double> delta;
+        std::vector<double> beta;
+    };
+
     typedef boost::multi_index::multi_index_container<
         seasonality,
         boost::multi_index::indexed_by<
@@ -107,7 +114,6 @@ namespace prophet {
         bool logistic_floor = false;
         double t_scale = 0.0;
         seasonalities_container seasonalities;
-        // std::map<std::string, seasonality> seasonalities;
         double seasonality_prior_scale;
         std::string seasonality_mode;
 
@@ -117,11 +123,20 @@ namespace prophet {
 
         std::string train_holiday_names;
 
+        tbl::table train_component_cols;
+        std::map<std::string, std::vector<std::string>> component_modes;
+
         double changepoint_prior_scale = 0.05;
         std::vector<double> changepoints;
         std::vector<double> changepoints_t;
         double changepoint_range;
         int n_changepoints;
+
+        fit_params params;
+
+        int uncertainty_samples = 1000;
+        double interval_width = 0.80;
+
 
         public:
             explicit prophet()
@@ -144,9 +159,16 @@ namespace prophet {
                 // TODO: seasonalities
                 // TODO: initialize_scales
 
+                std::cout << "==> setup_table:" << std::endl;
+                auto [tbl_rows, tbl_cols] = tbl.shape();
+                std::cout << "rows: " << tbl_rows << ", cols: " << tbl_cols << std::endl;
+
                 initialize_scales(tbl, scales);
 
                 auto rows = tbl.shape().first;
+                if (rows == 0) {
+                    rows = tbl.get_times().size();
+                }
                 // TODO: logistic floor
                 tbl.push_col("floor", std::vector<double>(rows, 0.0));
 
@@ -157,12 +179,16 @@ namespace prophet {
 
                 // if 'y' in df:
                 //     df['y_scaled'] = (df['y'] - df['floor']) / self.y_scale
-                auto y = tbl.get_col("y");
-                auto floor = tbl.get_col("floor");
-                auto y_scaled = (y - floor) / y_scale;
-                tbl.push_col("y_scaled", y_scaled);
+                if (tbl.exists("y")) {
+                    auto y = tbl.get_col("y");
+                    auto floor = tbl.get_col("floor");
+                    auto y_scaled = (y - floor) / y_scale;
+                    tbl.push_col("y_scaled", y_scaled);
+                }
 
                 // TODO: Handle extra regressors
+
+                std::cout << "<== setup_table" << std::endl;
 
                 return tbl;
             }
@@ -271,7 +297,12 @@ namespace prophet {
                 return fourier_order;
             }
 
-            auto make_all_seasonality_features(const tbl::table& tbl) {
+            std::tuple<
+                tbl::table,
+                std::vector<double>,
+                tbl::table,
+                std::map<std::string, std::vector<std::string>>
+            > make_all_seasonality_features(const tbl::table& tbl) {
 
                 std::vector<tbl::table> seasonal_features_vec;
                 std::vector<double> prior_scales;
@@ -539,6 +570,11 @@ namespace prophet {
                 set_auto_seasonalities();
                 auto [seasonal_features, prior_scales, component_cols, modes] = make_all_seasonality_features(history);
 
+                train_component_cols = component_cols;
+                component_modes = modes;
+
+                std::cout << "seasonal_features shape, rows: " << seasonal_features.shape().first << ", cols: " << seasonal_features.shape().second << std::endl;
+
                 set_changepoints();
 
                 std::map<std::string, int> trend_indicator{{"linear", 0}, {"logistic", 1}, {"flat", 2}};
@@ -731,6 +767,12 @@ namespace prophet {
                 for (auto v: trend) {
                     std::cout << "\t" << v << "\n";
                 }
+
+                this->params.delta = delta;
+                this->params.beta = beta;
+                this->params.k = k;
+                this->params.m = m;
+
                 return *this;
             }
 
@@ -758,6 +800,182 @@ namespace prophet {
 
                 for (auto& d: dates) {
                     tbl.push_time(d);
+                }
+
+                return tbl;
+            }
+
+            std::vector<double> predict_trend(const tbl::table& tbl) {
+                const auto& t = tbl.get_col("t");
+                std::vector<double> trend;
+                if (growth == "linear") {
+                    trend = piecewise_linear(t, params.delta, params.k, params.m, changepoints_t);
+                } else if (growth == "logistic") {
+                    std::cerr << "logistic growth not yet supported" << std::endl;
+                    std::abort();
+                } else if (growth == "flat") {
+                    std::cerr << "flat growth not yet supported" << std::endl;
+                    std::abort();
+                }
+
+                return trend * y_scale + tbl.get_col("floor");
+            }
+
+            tbl::table predict_seasonal_components(const tbl::table& tbl) {
+                std::cout << "==> predict_seasonal_components" << std::endl;
+                auto [seasonal_features, prior_scales, component_cols, modes] = make_all_seasonality_features(tbl);
+
+                std::cout << "seasonal_features shape, rows: " << seasonal_features.shape().first << ", cols: " << seasonal_features.shape().second << std::endl;
+
+                double lower_p = std::numeric_limits<double>::max();
+                double upper_p = std::numeric_limits<double>::max();
+                if (uncertainty_samples != std::numeric_limits<int>::max()) {
+                    lower_p = 100 * (1.0 - interval_width) / 2;
+                    upper_p = 100 * (1.0 + interval_width) / 2;
+
+                    std::cout << "lower_p: " << lower_p << std::endl;
+                    std::cout << "upper_p: " << upper_p << std::endl;
+                }
+
+                std::cout << "seasonal_features.to_eigen()" << std::endl;
+                auto X = seasonal_features.to_eigen();
+                std::cout << "X.rows(): " << X.rows() << ", X.cols(): " << X.cols() << std::endl;
+                std::cout << "seasonal_features.to_eigen() done." << std::endl;
+                tbl::table data;
+                for (auto& component: component_cols.get_names()) {
+                    auto beta_c = params.beta * component_cols.get_col(component);
+                    Eigen::VectorXd v2 = Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(beta_c.data(), beta_c.size());
+                    std::cout << "v2.rows(): " << v2.rows() << ", cols: " << v2.cols() << std::endl;
+                    auto comp = X * v2;
+                    std::cout << "beta_c:\n";
+                    for (auto& v: beta_c) {
+                        std::cout << v << std::endl;
+                    }
+                    std::cout << "==> comp:" << std::endl;
+                    std::cout << comp << std::endl;
+                    std::cout << "<== comp:" << std::endl;
+                    std::cout << "comp rows: " << comp.rows() << ", cols: " << comp.cols() << std::endl;
+
+                    std::vector<double> comp_v;
+
+                    for (auto i = 0; i < comp.rows(); ++i) {
+                        for (auto j = 0; j < comp.cols(); ++j) {
+                            comp_v.push_back(comp(i, j));
+                        }
+                    }
+
+                    auto& component_mode = component_modes["additive"];
+                    if (std::find(component_mode.begin(), component_mode.end(), component) != component_mode.end()) {
+                        comp_v *= y_scale;
+                    }
+
+                    // TODO prophet is doing something dubious here. comp is an array
+                    // of 1 element arrays and it takes the mean of each, effectively
+                    // returning a single dimensional array of what's in each array.
+                    // we're skipping that for now.
+
+                    data.push_col(component, comp_v);
+                    if (uncertainty_samples != std::numeric_limits<int>::max()) {
+                        // TODO Same thing applies here as above, the python code
+                        // is taking the percentile of 1 element arrays
+                        data.push_col(component + "_lower", comp_v);
+                        data.push_col(component + "_upper", comp_v);
+                    }
+                }
+                std::cout << "<== predict_seasonal_components" << std::endl;
+
+                return data;
+            }
+
+            std::vector<double> sample_predictive_trend(tbl::table tbl, int iteration) {
+
+            }
+
+            tbl::table sample_model(tbl::table tbl, tbl::table seasonal_features, int iteration, std::vector<double> s_a, std::vector<double> s_m) {
+                return tbl::table{};
+            }
+
+            std::map<std::string, std::vector<double>> sample_posterior_predictive(tbl::table tbl) {
+
+                // TODO In Python, the 'k' param is a 1x1 shape. But in the
+                // stan model it's declared as a real scalar. So we're just going
+                // to declare n_iterations = 1 here
+                // n_iterations = self.params['k'].shape[0]
+
+                std::cout << "==> sample_posterior_predictive\n";
+
+                int n_iterations = 1;
+                int samp_per_iter = fmax(1, ceil(uncertainty_samples / double(n_iterations)));
+
+                std::cout << "samp_per_iter: " << samp_per_iter << "\n";
+
+                auto [seasonal_features, prior_scales, component_cols, modes] = make_all_seasonality_features(tbl);
+
+                std::map<std::string, std::vector<double>> sim_values = {{"yhat", {}}, {"trend", {}}};
+                for (auto i = 0; i < n_iterations; ++i) {
+                    for (auto j = 0; j < samp_per_iter; ++j) {
+                        auto sim = sample_model(
+                            tbl,
+                            seasonal_features,
+                            i,
+                            component_cols.get_col("additive_terms"),
+                            component_cols.get_col("multiplicative_terms"));
+                    }
+                }
+
+                std::cout << "<== sample_posterior_predictive" << std::endl;
+
+                return std::map<std::string, std::vector<double>>{};
+            }
+
+            tbl::table predict_uncertainty(tbl::table tbl) {
+                auto sim_values = sample_posterior_predictive(tbl);
+
+                return tbl::table{};
+            }
+
+            tbl::table predict(tbl::table tbl=tbl::table{}) {
+
+                if (!(history.shape().second > 0)) {
+                    std::cerr << "Model has not been fit." << std::endl;
+                    // TODO: Determine error handling, use exceptions, but need definition
+                    std::abort();
+                }
+
+                std::cout << "tbl.get_times().size(): " << tbl.get_times().size() << std::endl;
+
+                if (!(tbl.shape().second > 0) && !(tbl.get_times().size() > 0)) {
+                    std::cout << "predict, tbl = history" << std::endl;
+                    tbl.print();
+                    tbl = history;
+                } else {
+                    if (tbl.shape().first == 0 && tbl.get_times().size() == 0) {
+                        std::cerr << "table has no rows" << std::endl;
+                        std::abort();
+                    }
+                    tbl = setup_table(tbl);
+                }
+
+                auto [rows, cols] = tbl.shape();
+
+                std::cout << "==> predict, tbl.shape():\n";
+                std::cout << "rows: " << rows << ", cols: " << cols << "\n";
+                std::cout << "<== predict, tbl.shape()" << std::endl;
+
+                tbl.push_col("trend", predict_trend(tbl));
+                std::cout << "==> trend\n";
+                for (auto& v: tbl.get_col("trend")) {
+                    std::cout << v << "\n";
+                }
+                std::cout << "<== trend" << std::endl;
+
+                auto seasonal_components = predict_seasonal_components(tbl);
+                std::cout << "==> seasonal_components:\n";
+                seasonal_components.print();
+                std::cout << "<== seasonal_components" << std::endl;
+
+                if (uncertainty_samples != std::numeric_limits<int>::max()) {
+                    auto intervals = predict_uncertainty(tbl);
                 }
 
                 return tbl;
