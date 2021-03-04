@@ -888,7 +888,7 @@ namespace prophet {
             }
 
             std::vector<double> sample_predictive_trend(tbl::table tbl, int iteration) {
-
+                return std::vector<double>{};
             }
 
             tbl::table sample_model(tbl::table tbl, tbl::table seasonal_features, int iteration, std::vector<double> s_a, std::vector<double> s_m) {
